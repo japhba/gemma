@@ -63,6 +63,7 @@ class Attention(nn.Module):
   query_pre_attn_scalar: float
   attn_logits_soft_cap: float | None = None
   sliding_window_size: int | None = None
+  zero_pos_embed: bool = False
 
   @property
   def use_qkv_einsum(self):
@@ -105,17 +106,19 @@ class Attention(nn.Module):
       query_proj = self.q_einsum('BTD,NDH->BTNH', x)
       key_proj, value_proj = self.kv_einsum('BSD,CKDH->CBSKH', x)
 
-    query_proj = positional_embeddings.apply_rope(
-        query_proj,
-        segment_pos,
-        head_dim=self.head_dim,
-    )
+    if not self.zero_pos_embed:
+      query_proj = positional_embeddings.apply_rope(
+          query_proj,
+          segment_pos,
+          head_dim=self.head_dim,
+      )
     query_scaled = query_proj * self.query_pre_attn_scalar
-    key_proj = positional_embeddings.apply_rope(
-        key_proj,
-        segment_pos,
-        head_dim=self.head_dim,
-    )
+    if not self.zero_pos_embed:
+      key_proj = positional_embeddings.apply_rope(
+          key_proj,
+          segment_pos,
+          head_dim=self.head_dim,
+      )
 
     # Cache is left aligned.
     if cache is not None:
@@ -263,6 +266,7 @@ class Block(nn.Module):
   transpose_gating_einsum: bool
   attn_logits_soft_cap: float | None = None
   sliding_window_size: int | None = None
+  zero_pos_embed: bool = False
 
   def setup(self):
     self.pre_attention_norm = layers.RMSNorm()
@@ -275,6 +279,7 @@ class Block(nn.Module):
         query_pre_attn_scalar=self.query_pre_attn_scalar,
         attn_logits_soft_cap=self.attn_logits_soft_cap,
         sliding_window_size=self.sliding_window_size,
+        zero_pos_embed=self.zero_pos_embed,
     )
     self.post_attention_norm = None
     if self.use_post_attn_norm:

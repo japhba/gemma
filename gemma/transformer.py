@@ -246,6 +246,7 @@ class Transformer(nn.Module):
   """Gemma transformer."""
 
   config: TransformerConfig
+  zero_pos_embed: bool = False  # TODO include in config
 
   def setup(self):
     self.embedder = modules.Embedder(
@@ -268,6 +269,7 @@ class Transformer(nn.Module):
             attn_type=attn_type,
             query_pre_attn_scalar=self.config.query_pre_attn_scalar(),
             transpose_gating_einsum=self.config.transpose_gating_einsum,
+            zero_pos_embed=self.zero_pos_embed,
         )
         for i, attn_type in zip(
             range(self.config.num_layers), self.config.attention_types
@@ -313,7 +315,7 @@ class Transformer(nn.Module):
       layer_cache = cache[layer_name] if cache else None
       layer_cache, x, att = block(
           x,
-          positions,
+          positions * (0. if self.zero_pos_embed else 1.),
           layer_cache,
           attention_mask,
           return_probs=return_att,
