@@ -95,6 +95,7 @@ class Attention(nn.Module):
       segment_pos: jax.Array,
       cache: LayerCache | None,
       attn_mask: jax.Array,
+      return_probs: bool = False,
   ) -> tuple[LayerCache | None, jax.Array]:
     seq_len = x.shape[1]
 
@@ -181,7 +182,8 @@ class Attention(nn.Module):
     else:
       new_cache = None
 
-    return new_cache, attn_output
+    return new_cache, attn_output, (probs if return_probs else None)
+
 
   @classmethod
   def init_cache(
@@ -294,13 +296,15 @@ class Block(nn.Module):
       segment_pos: jax.Array,
       cache: LayerCache | None,
       attn_mask: jax.Array,
+      return_probs: bool = False,
   ) -> tuple[LayerCache | None, jax.Array]:
     inputs_normalized = self.pre_attention_norm(x)
-    cache, attn_output = self.attn(
+    cache, attn_output, probs = self.attn(
         inputs_normalized,
         segment_pos,
         cache,
         attn_mask,
+        return_probs=return_probs,
     )
     if self.post_attention_norm is not None:
       attn_output = self.post_attention_norm(attn_output)
@@ -310,4 +314,4 @@ class Block(nn.Module):
     if self.post_ffw_norm is not None:
       outputs = self.post_ffw_norm(outputs)
     outputs += attn_output
-    return cache, outputs
+    return cache, outputs, probs

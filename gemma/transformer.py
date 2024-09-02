@@ -281,6 +281,9 @@ class Transformer(nn.Module):
       positions: jax.Array,  # [B, L]
       cache: Cache | None,  # (sequence length L')
       attention_mask: jax.Array,  # [B, L, L']
+      return_embed: bool=False, 
+      return_att: bool=False,
+
   ) -> tuple[jax.Array, Cache | None]:
     """Transformer forward pass.
 
@@ -300,15 +303,24 @@ class Transformer(nn.Module):
       new_cache: updated cache if the input cache is not None, None elsewhere.
     """
     x = self.embedder.encode(last_tokens)
+
+    aux = dict()
+    embeds = []
+    atts = []
+
     for i, block in enumerate(self.blocks):
       layer_name = f'layer_{i}'
       layer_cache = cache[layer_name] if cache else None
-      layer_cache, x = block(
+      layer_cache, x, att = block(
           x,
           positions,
           layer_cache,
           attention_mask,
+          return_probs=return_att,
       )
+      embeds.append(x if return_embed else None)
+      atts.append(att if return_att else None)
+
       if cache is not None:
         cache[layer_name] = layer_cache  # pytype: disable=container-type-mismatch
 
@@ -319,7 +331,10 @@ class Transformer(nn.Module):
       logits /= self.config.final_logit_softcap
       logits = jnp.tanh(logits) * self.config.final_logit_softcap
 
-    return logits, cache  # pytype: disable=bad-return-type
+    aux['embeds'] = embeds
+    aux['atts'] = atts
+
+    return logits, cache, aux  # pytype: disable=bad-return-type
 
 
 def make_causal_attn_mask(
