@@ -54,6 +54,105 @@ class EmbedderTest(absltest.TestCase):
     np.testing.assert_array_equal(output, jnp.array(expected))
 
 
+class SlidingWindowTest(absltest.TestCase):
+
+  def test_create_sliding_mask_decode_none_rotated_cache_pos(self):
+    cache_len = 4
+    end_index = 1
+    segment_pos = jnp.array([[1]])
+
+    sliding_mask = modules._create_sliding_mask(
+        segment_pos, end_index, cache_len, sliding_window_size=1
+    )
+    np.testing.assert_array_equal(
+        sliding_mask,
+        [[[False, True, False, False]]],
+    )
+
+    sliding_mask = modules._create_sliding_mask(
+        segment_pos, end_index, cache_len, sliding_window_size=2
+    )
+    np.testing.assert_array_equal(
+        sliding_mask,
+        [[[True, True, True, False]]],
+    )
+
+    sliding_mask = modules._create_sliding_mask(
+        segment_pos, end_index, cache_len, sliding_window_size=3
+    )
+    np.testing.assert_array_equal(
+        sliding_mask,
+        [[[True, True, True, True]]],
+    )
+
+  def test_create_sliding_mask_decode_rotated_cache_pos(self):
+    cache_len = 4
+    end_index = 5
+    segment_pos = jnp.array([[5]])
+
+    sliding_mask = modules._create_sliding_mask(
+        segment_pos, end_index, cache_len, sliding_window_size=1
+    )
+    np.testing.assert_array_equal(
+        sliding_mask,
+        # cache_positions = [
+        #   4,      5,     2,     3,
+        # ]
+        [[[False, True, False, False]]],
+    )
+
+    sliding_mask = modules._create_sliding_mask(
+        segment_pos, end_index, cache_len, sliding_window_size=2
+    )
+    np.testing.assert_array_equal(
+        sliding_mask,
+        [[[True, True, False, False]]],
+    )
+
+    sliding_mask = modules._create_sliding_mask(
+        segment_pos, end_index, cache_len, sliding_window_size=3
+    )
+    np.testing.assert_array_equal(
+        sliding_mask,
+        [[[True, True, False, True]]],
+    )
+
+  def test_create_sliding_mask_prefill_rotated_cache_pos(self):
+    cache_len = 4
+    end_index = 5
+    segment_pos = jnp.array([[5, 6]])
+
+    sliding_mask = modules._create_sliding_mask(
+        segment_pos, end_index, cache_len, sliding_window_size=1
+    )
+    np.testing.assert_array_equal(
+        sliding_mask,
+        # cache_positions = [
+        #   4,      5,     6,     3,
+        # ]
+        [[[False, True, False, False],
+          [False, False, True, False],]],
+    )
+
+    sliding_mask = modules._create_sliding_mask(
+        segment_pos, end_index, cache_len, sliding_window_size=2
+    )
+    np.testing.assert_array_equal(
+        sliding_mask,
+        [[[True, True, True, False],
+          [False, True, True, False],]],
+    )
+
+    sliding_mask = modules._create_sliding_mask(
+        segment_pos, end_index, cache_len, sliding_window_size=3
+    )
+    np.testing.assert_array_equal(
+        sliding_mask,
+        [[[True, True, True, True],
+          [True, True, True, False],]],
+    )
+
+
 class AttentionTest(absltest.TestCase):
 
   def _get_attn_output(
@@ -283,6 +382,40 @@ class FeedForwardTest(parameterized.TestCase):
     expected_shape = (2, 1, 2)
     np.testing.assert_array_almost_equal(outputs[:, 0, 0], expected_val)
     self.assertEqual(outputs.shape, expected_shape)
+
+  @parameterized.parameters(
+      dict(
+          transpose_gating_einsum=False,
+          expected_grad=[-1.916515e-04, -5.391428e-05, -2.923766e-04],
+      ),
+      dict(
+          transpose_gating_einsum=True,
+          expected_grad=[1.574128e-05, -1.301362e-04, -1.037612e-04],
+      ),
+  )
+  def test_ffw_grad(self, transpose_gating_einsum: bool,
+                    expected_grad: list[float]):
+    features = 2
+    hidden_dim = 3
+    batch_size = 2
+    inputs = jnp.arange(1, batch_size + 1)[:, None, None]
+    inputs = jnp.repeat(inputs, features, axis=-1)
+    ffw = modules.FeedForward(
+        features=features,
+        hidden_dim=hidden_dim,
+        transpose_gating_einsum=transpose_gating_einsum,
+    )
+    loss = lambda params, inputs: jnp.square(
+        ffw.apply(params, inputs) - jnp.ones((batch_size, 1, features))
+    ).mean()
+
+    params = ffw.init(jax.random.PRNGKey(0), inputs)
+
+    grad_loss = jax.grad(loss)
+    grad = grad_loss(params, inputs)
+    np.testing.assert_array_almost_equal(
+        grad['params']['linear'][:, 0], expected_grad
+    )
 
 
 class BlockTest(absltest.TestCase):
