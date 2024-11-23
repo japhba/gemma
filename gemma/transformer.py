@@ -4,14 +4,14 @@
 # you may not use this file except in compliance with the License.
 # You may obtain a copy of the License at
 #
-#    http://www.apache.org/licenses/LICENSE-2.0
+#     http://www.apache.org/licenses/LICENSE-2.0
 #
 # Unless required by applicable law or agreed to in writing, software
 # distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or  implied.
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-# ============================================================================
+
 """Gemma transformer."""
 
 import dataclasses
@@ -343,22 +343,61 @@ class Transformer(nn.Module):
 
 
 def make_causal_attn_mask(
-    input_mask: jax.Array,
+    input_mask: jax.Array,  # Shape [B, L]
 ) -> jax.Array:
-  """Attention mask in batch mode.
+  """Makes a causal attention mask.
+
+  I.e., as in middle diagram of Figure 3 in https://arxiv.org/pdf/1910.10683.
 
   Args:
     input_mask: Input mask for the input. True for non-padded tokens only, else
       False.
 
   Returns:
-    Attention mask.
+    Attention mask of shape [B, L, L] (where B=batch dim and L=sequence dim).
   """
+  if len(input_mask.shape) != 2:
+    raise ValueError(
+        f'Input mask must be 2D (shape [B, L]), but got {input_mask.shape}.'
+    )
   seq_len = input_mask.shape[-1]
+  causal_mask = jnp.tril(jnp.ones((seq_len, seq_len), dtype=jnp.bool))
   attn_mask = input_mask[..., None, :]
-  causal_mask = jnp.tril(jnp.ones((seq_len, seq_len), dtype=jnp.bool_))
-  # Prefixes can be attended by all tokens
   attn_mask *= causal_mask[None, ...]
+  return attn_mask
+
+
+def make_causal_with_prefix_attn_mask(
+    input_mask: jax.Array,  # Shape [B, L]
+    prefix_mask: jax.Array,  # Shape [B, L]
+) -> jax.Array:
+  """Makes a causal with prefix attention mask.
+
+  I.e., as in the right diagram of Figure 3 in https://arxiv.org/pdf/1910.10683.
+
+  Args:
+    input_mask: Input mask for the input. True for non-padded tokens only, else
+      False.
+    prefix_mask: Input mask for the prefix. True for prefix tokens only, else
+      False.
+
+  Returns:
+    Attention mask of shape [B, L, L] (where B=batch dim and L=sequence dim).
+  """
+  if len(input_mask.shape) != 2:
+    raise ValueError(
+        f'Input mask must be 2D (shape [B, L]), but got {input_mask.shape}.'
+    )
+  if len(prefix_mask.shape) != 2:
+    raise ValueError(
+        f'Prefix mask must be 2D (shape [B, L]), but got {prefix_mask.shape}.'
+    )
+  seq_len = input_mask.shape[-1]
+  causal_mask = jnp.tril(jnp.ones((seq_len, seq_len), dtype=jnp.bool))
+  prefix_mask = jnp.tile(jnp.expand_dims(prefix_mask, axis=1), [1, seq_len, 1])
+  causal_or_prefix_mask = jnp.logical_or(causal_mask, prefix_mask)
+  attn_mask = input_mask[..., None, :]
+  attn_mask *= causal_or_prefix_mask
   return attn_mask
 
 
