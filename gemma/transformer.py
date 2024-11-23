@@ -304,7 +304,10 @@ class Transformer(nn.Module):
       predicted_logits: output logits predicted by the model
       new_cache: updated cache if the input cache is not None, None elsewhere.
     """
-    x = self.embedder.encode(last_tokens)
+    if last_tokens.dtype.kind != 'f':
+      x = self.embedder.encode(last_tokens)
+    else:
+      x = last_tokens if last_tokens.ndim == 3 else last_tokens[..., None]
 
     aux = dict()
     embeds = []
