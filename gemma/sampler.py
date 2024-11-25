@@ -143,7 +143,7 @@ class Sampler:
     )
     last_token = last_token.reshape((batch_size, 1))
 
-    logits, cache = self.transformer.apply(
+    logits, cache, aux = self.transformer.apply(  # TODO do something with aux
         {'params': params},
         last_token,
         step_positions,
