@@ -154,7 +154,7 @@ class Attention(nn.Module):
     if cache is not None:
       end_index = cache['end_index'][0]
       slice_indices = (0, end_index % cache['v'].shape[1], 0, 0)
-      value_proj = jax.lax.dynamic_update_slice(
+      value_proj = jax.lax.dynamic_update_slice(  # returns cache['v'], but with value_proj in the last slice
           cache['v'],
           value_proj,
           slice_indices,

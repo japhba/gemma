@@ -101,6 +101,9 @@ class SamplerOutput:
   # Tokens corresponding to the generated samples.
   tokens: list[list[int]]
 
+  # Layer cache.
+  cache: dict[str, modules.LayerCache]
+
 
 class Sampler:
   """Sampler for gemma transformer."""
@@ -143,6 +146,8 @@ class Sampler:
     )
     last_token = last_token.reshape((batch_size, 1))
 
+    # cache: k, v
+    # aux: embeds, atts
     logits, cache, aux = self.transformer.apply(  # TODO do something with aux
         {'params': params},
         last_token,
@@ -362,5 +367,6 @@ class Sampler:
         text=decoded_outputs,
         logits=out_logits,
         tokens=out_tokens,
+        cache=sampling_state.cache,
     )
     return result
